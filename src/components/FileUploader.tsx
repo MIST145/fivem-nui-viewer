@@ -9,7 +9,9 @@ import {
   AlertCircle,
   FileCode,
   Image,
-  File
+  File,
+  Trash2,
+  Check
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +22,13 @@ interface FileStructure {
   lua?: string;
 }
 
+interface AccumulatedFiles {
+  html: string[];
+  css: string[];
+  js: string[];
+  lua: string[];
+}
+
 interface FileUploaderProps {
   onFilesUploaded: (files: FileStructure) => void;
 }
@@ -27,7 +36,13 @@ interface FileUploaderProps {
 export function FileUploader({ onFilesUploaded }: FileUploaderProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [accumulatedFiles, setAccumulatedFiles] = useState<AccumulatedFiles>({
+    html: [],
+    css: [],
+    js: [],
+    lua: []
+  });
+  const [uploadedFileNames, setUploadedFileNames] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -43,30 +58,48 @@ export function FileUploader({ onFilesUploaded }: FileUploaderProps) {
   const processFiles = async (files: FileList | File[]) => {
     setIsUploading(true);
     const fileArray = Array.from(files);
-    const uploadedFileNames: string[] = [];
+    const newFileNames: string[] = [];
 
-    const fileStructure: FileStructure = {
-      html: '',
-      css: '',
-      js: '',
-      lua: ''
+    const tempAccumulated: AccumulatedFiles = {
+      html: [...accumulatedFiles.html],
+      css: [...accumulatedFiles.css],
+      js: [...accumulatedFiles.js],
+      lua: [...accumulatedFiles.lua]
     };
 
     for (const file of fileArray) {
       const text = await file.text();
       const fileName = file.name.toLowerCase();
-      uploadedFileNames.push(file.name);
+      newFileNames.push(file.name);
 
       if (fileName.endsWith('.html') || fileName.endsWith('.htm')) {
-        fileStructure.html = text;
+        tempAccumulated.html.push(text);
       } else if (fileName.endsWith('.css')) {
-        fileStructure.css = text;
+        tempAccumulated.css.push(text);
       } else if (fileName.endsWith('.js')) {
-        fileStructure.js = text;
+        tempAccumulated.js.push(text);
       } else if (fileName.endsWith('.lua')) {
-        fileStructure.lua = text;
+        tempAccumulated.lua.push(text);
       }
     }
+
+    setAccumulatedFiles(tempAccumulated);
+    setUploadedFileNames(prev => [...prev, ...newFileNames]);
+    setIsUploading(false);
+    
+    // Clear file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const confirmUpload = () => {
+    const fileStructure: FileStructure = {
+      html: accumulatedFiles.html.length > 0 ? accumulatedFiles.html[accumulatedFiles.html.length - 1] : '',
+      css: accumulatedFiles.css.join('\n\n/* ========== */\n\n'),
+      js: accumulatedFiles.js.join('\n\n// ==========\n\n'),
+      lua: accumulatedFiles.lua.join('\n\n-- ==========\n\n')
+    };
 
     // If no HTML file found, create a basic template
     if (!fileStructure.html) {
@@ -86,9 +119,27 @@ export function FileUploader({ onFilesUploaded }: FileUploaderProps) {
 </html>`;
     }
 
-    setUploadedFiles(uploadedFileNames);
-    setIsUploading(false);
     onFilesUploaded(fileStructure);
+  };
+
+  const clearFiles = () => {
+    setAccumulatedFiles({
+      html: [],
+      css: [],
+      js: [],
+      lua: []
+    });
+    setUploadedFileNames([]);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const getTotalFileCount = () => {
+    return accumulatedFiles.html.length + 
+           accumulatedFiles.css.length + 
+           accumulatedFiles.js.length + 
+           accumulatedFiles.lua.length;
   };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -203,26 +254,75 @@ export function FileUploader({ onFilesUploaded }: FileUploaderProps) {
         className="hidden"
       />
 
-      {/* Uploaded Files List */}
-      {uploadedFiles.length > 0 && (
-        <Card className="p-4">
-          <h3 className="font-semibold mb-3 flex items-center">
-            <CheckCircle className="h-4 w-4 text-secondary mr-2" />
-            Arquivos Carregados ({uploadedFiles.length})
-          </h3>
-          <div className="space-y-2">
-            {uploadedFiles.map((fileName, index) => (
-              <div
-                key={index}
-                className="flex items-center space-x-3 p-2 rounded bg-muted/50"
-              >
-                {getFileIcon(fileName)}
-                <span className="text-sm font-medium flex-1">{fileName}</span>
-                <CheckCircle className="h-4 w-4 text-secondary" />
+      {/* File Summary and Action Buttons */}
+      {getTotalFileCount() > 0 && (
+        <div className="space-y-4">
+          <Card className="p-4">
+            <h3 className="font-semibold mb-3 flex items-center">
+              <CheckCircle className="h-4 w-4 text-secondary mr-2" />
+              Arquivos Acumulados ({getTotalFileCount()})
+            </h3>
+            
+            {/* File type counters */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              {accumulatedFiles.html.length > 0 && (
+                <div className="text-center p-2 bg-orange-500/10 rounded border border-orange-500/20">
+                  <FileCode className="h-5 w-5 text-orange-400 mx-auto mb-1" />
+                  <div className="text-sm font-medium">HTML: {accumulatedFiles.html.length}</div>
+                </div>
+              )}
+              {accumulatedFiles.css.length > 0 && (
+                <div className="text-center p-2 bg-blue-500/10 rounded border border-blue-500/20">
+                  <FileCode className="h-5 w-5 text-blue-400 mx-auto mb-1" />
+                  <div className="text-sm font-medium">CSS: {accumulatedFiles.css.length}</div>
+                </div>
+              )}
+              {accumulatedFiles.js.length > 0 && (
+                <div className="text-center p-2 bg-yellow-500/10 rounded border border-yellow-500/20">
+                  <FileCode className="h-5 w-5 text-yellow-400 mx-auto mb-1" />
+                  <div className="text-sm font-medium">JS: {accumulatedFiles.js.length}</div>
+                </div>
+              )}
+              {accumulatedFiles.lua.length > 0 && (
+                <div className="text-center p-2 bg-purple-500/10 rounded border border-purple-500/20">
+                  <FileCode className="h-5 w-5 text-purple-400 mx-auto mb-1" />
+                  <div className="text-sm font-medium">Lua: {accumulatedFiles.lua.length}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex space-x-3">
+              <Button onClick={confirmUpload} className="flex-1">
+                <Check className="h-4 w-4 mr-2" />
+                Confirmar Carregamento
+              </Button>
+              <Button variant="destructive" onClick={clearFiles}>
+                <Trash2 className="h-4 w-4 mr-2" />
+                Apagar Ficheiros
+              </Button>
+            </div>
+          </Card>
+
+          {/* Detailed file list */}
+          {uploadedFileNames.length > 0 && (
+            <Card className="p-4">
+              <h4 className="font-medium mb-3">Ficheiros Carregados</h4>
+              <div className="space-y-2 max-h-32 overflow-y-auto">
+                {uploadedFileNames.map((fileName, index) => (
+                  <div
+                    key={index}
+                    className="flex items-center space-x-3 p-2 rounded bg-muted/50"
+                  >
+                    {getFileIcon(fileName)}
+                    <span className="text-sm font-medium flex-1">{fileName}</span>
+                    <CheckCircle className="h-4 w-4 text-secondary" />
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Card>
+            </Card>
+          )}
+        </div>
       )}
 
       {/* Framework Templates */}
